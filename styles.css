@@ -1,0 +1,79 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+#gameContainer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    /* Center-aligns the timerDisplay text */
+}
+
+#canvas1 {
+    border: 3px solid rgb(5, 5, 5);
+    max-width: 100%;
+    max-height: 100%;
+    background-color: rgb(216, 213, 230);
+    display: block;
+    /* This makes it easier to manage spacing */
+    margin: 10px auto 0;
+    /* This adds space above the canvas and centers it horizontally */
+}
+
+#timerDisplay {
+    font-size: 24px;
+    font-weight: bold;
+    color: black;
+    margin-bottom: 10px;
+    /* Adjusts space above the canvas */
+}
+
+.player-display-container {
+    margin-bottom: 1px;
+}
+
+.health-display {
+    width: 200px;
+    /* Example width */
+    height: 20px;
+    /* Example height */
+    margin-bottom: 10px;
+}
+
+.hunger-display {
+    width: 100px;
+    /* Example width */
+    height: 20px;
+    /* Example height */
+    margin-bottom: 1px;
+}
+
+.health-bar {
+    height: 10px;
+    background-color: green;
+    width: 150%;
+    /* Initial width. Will be dynamically updated. */
+    text-align: center;
+    color: rgb(8, 8, 8);
+    margin-bottom: 0px;
+}
+
+#hovered-player-info {
+    position: absolute;
+    right: 5px;
+    top: 40px;
+    
+    /* Adjust as needed */
+    
+    /* Adjust as needed */
+    background:transparent;
+    padding: 10px;
+    display: none;
+    /* Initially hidden */
+    z-index: 10;
+    /* Ensure it's above other elements */
+}
