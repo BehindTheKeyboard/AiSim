@@ -161,6 +161,9 @@ class Game {
             const newPlayer = new Player(this, parentDisplayId, x, y);
             this.players.push(newPlayer);
         }
+        const parentDisplayId = 'players-display';
+        const newPlayer = new Player(this, parentDisplayId, this.width/2, this.height/2);
+        this.players.push(newPlayer);
     }
 
     removePlayer(player: Player): void {
@@ -213,7 +216,7 @@ class Game {
     startFoodInterval(): void {
         this.foodIntervalId = setInterval(() => {
             if (!this.gameActive) return; // Check if game is active before adding food
-            this.addFood(3);
+            // this.addFood(3);
         }, 5000);
     }
     handleMouseMove(event: MouseEvent, canvas: HTMLCanvasElement): void {
@@ -259,7 +262,8 @@ class Game {
             `<br>Hunger: ${player.hunger.hungerLevel}` +
             `<br>Can ID Poison: ${player.canIdentifyPoison}` +
             `<br> Age: ${player.playerAge}` +
-            `<br> Time Alive: ${this.formatTime(timeAlive)}`;
+            `<br> Time Alive: ${this.formatTime(timeAlive)}` +
+            `<br> LocX: ${player.location.x} LocY: ${player.location.y}`
     }
     private formatTime(seconds: number): string {
         const minutes = Math.floor(seconds / 60);

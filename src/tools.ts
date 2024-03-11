@@ -44,4 +44,12 @@ export enum Nutrition {
     poison = -1,
 }
 
+export enum Wall {
+    None = "None",
+    Top = "Top",
+    Bottom = "Bottom",
+    Left = "Left",
+    Right = "Right"
+}
+
 export type Age = "Baby" | "Adalescence" | "Adult" | "Senior";

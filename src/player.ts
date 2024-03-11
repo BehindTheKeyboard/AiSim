@@ -1,5 +1,5 @@
 import { Game } from "./game";
-import { Age, Hunger, Location, Nutrition, normalizeAngle } from "./tools.js";
+import { Age, Hunger, Location, Nutrition, Wall, normalizeAngle } from "./tools.js";
 import { Food } from "./food.js"
 
 class Player {
@@ -12,7 +12,7 @@ class Player {
     maxSpeed: number;
     rotationSpeed: number = .25;
     rotation: number = 0;
-    targetRotation: number | null = null;
+    targetRotation: number;
     hunger: Hunger;
     velocityX: number = 0;
     velocityY: number = 0;
@@ -30,6 +30,10 @@ class Player {
     avoidPoison: boolean;
     hasConsumedPoison: boolean;
     identifyPoisonChance: number = 0.50;
+    wallHitCounter: number = 0;
+    collidedWithWall = false;
+    hasRotatedPostCollision = false;
+    backupCounter = 30;
 
     // #region constructor
     constructor(game: Game, parentDisplayId: string, x?: number, y?: number) {
@@ -47,11 +51,12 @@ class Player {
         } else {
             this.location = { x: 0, y: 0 };
         }
-        this.speed = .75;
-        this.maxSpeed = 3;
+        this.speed = .25;
+        this.maxSpeed = 1;
         this.hunger = { hungerLevel: 0, maxHunger: 10, hungerIncreaseRate: .25 };
         this.rotation = Math.random() * 360;
         this.health = 100;
+        this.targetRotation = 0;
 
         this.createPlayerDisplay(parentDisplayId, game);
         this.createHungerDisplay();
@@ -77,10 +82,10 @@ class Player {
                 this.health = 0;
                 this.isAlive = false;
             }
-
+            this.explore();
+            this.smoothRotation(this.targetRotation);
             this.updateHealthDisplay();
             this.applyVelocity();
-            this.checkForCanvasCollision();
             this.checkForFoodCollision();
             this.checkGrowth();
             this.checkSpeed();
@@ -151,7 +156,9 @@ class Player {
             if (this.isAlive) {
                 this.hungerDisplay.textContent = `Hunger: ${this.hunger.hungerLevel}`;
             } else {
-                this.hungerDisplay.textContent = "TERMINATED";
+                // Use getTimeAlive() to get the elapsed time and display it
+                const timeAlive = this.getTimeAlive();
+                this.hungerDisplay.textContent = `TERMINATED - Time Alive: ${timeAlive} seconds`;
                 this.hungerDisplay.style.color = "red";
             }
         } else {
@@ -201,6 +208,94 @@ class Player {
         return this.health;
     }
 
+    // #region player wall collision checks
+    private calculateBaseLeftPosition(): { x: number, y: number } {
+        const halfWidth = this.width / 2;
+        const halfHeight = this.height / 2;
+        // Calculate the angle for the left point
+        const angleLeft = this.radians(this.rotation - 90);
+        // Calculate the position
+        const xLeft = this.location.x + halfWidth + Math.cos(angleLeft) * halfHeight;
+        const yLeft = this.location.y + halfHeight + Math.sin(angleLeft) * halfHeight;
+        return { x: xLeft, y: yLeft };
+    }
+
+    private calculateBaseRightPosition(): { x: number, y: number } {
+        const halfWidth = this.width / 2;
+        const halfHeight = this.height / 2;
+        // Calculate the angle for the right point
+        const angleRight = this.radians(this.rotation + 90);
+        // Calculate the position
+        const xRight = this.location.x + halfWidth + Math.cos(angleRight) * halfHeight;
+        const yRight = this.location.y + halfHeight + Math.sin(angleRight) * halfHeight;
+        return { x: xRight, y: yRight };
+    }
+
+    private calculateTipPosition(): { x: number; y: number } {
+        // Calculate the tip's position relative to the center
+        const offsetX = Math.cos(this.radians(this.rotation)) * (this.width / 2);
+        const offsetY = Math.sin(this.radians(this.rotation)) * (this.width / 2);
+
+        // Apply the offset to the center position to get the tip's global position
+        const tipX = this.location.x + this.width / 2 + offsetX;
+        const tipY = this.location.y + this.height / 2 + offsetY;
+
+        return { x: tipX, y: tipY };
+    }
+
+    private checkWallCollision(): { collision: boolean, wall: 'top' | 'bottom' | 'left' | 'right' | null } {
+        // Calculate positions of the triangle's vertices
+        const tipPosition = this.calculateTipPosition();
+        const baseLeftPosition = this.calculateBaseLeftPosition(); // Ensure this method is correctly implemented
+        const baseRightPosition = this.calculateBaseRightPosition(); // Ensure this method is correctly implemented
+    
+        // Initialize variables to track collision state
+        let collision = false;
+        let wall: 'top' | 'bottom' | 'left' | 'right' | null = null;
+    
+        // Define the game area boundaries
+        const leftBoundary = 0;
+        const rightBoundary = this.game.width;
+        const topBoundary = 0;
+        const bottomBoundary = this.game.height;
+    
+        // Check each vertex for wall collision
+        const points = [tipPosition, baseLeftPosition, baseRightPosition];
+        const margin = 2;
+        for (const point of points) {
+            // Left wall collision
+            if (point.x - (margin + 2) <= leftBoundary) {
+                collision = true;
+                wall = 'left';
+                break;
+            }
+            // Right wall collision
+            else if (point.x + (margin + 2)>= rightBoundary) {
+                collision = true;
+                wall = 'right';
+                break;
+            }
+    
+            // Top wall collision
+            if (point.y - margin <= topBoundary) {
+                collision = true;
+                wall = 'top';
+                break;
+            }
+            // Bottom wall collision
+            else if (point.y + margin >= bottomBoundary) {
+                collision = true;
+                wall = 'bottom';
+                break;
+            }
+        }
+    
+        return { collision, wall };
+    }
+    
+    // #endregion
+
+
     // #region player movement
     private rotateRight(degrees: number): void {
         this.rotation -= degrees; // Decrease the angle for clockwise rotation
@@ -242,6 +337,21 @@ class Player {
         this.velocityY += Math.sin(this.radians(this.rotation + 90)) * this.speed;
     }
 
+    rotate(degrees: number): void {
+        // Update the entity's angle by adding the rotation degrees
+        // Ensuring the angle stays within the range of 0 to 360
+        this.rotation = (this.rotation + degrees) % 360;
+        if (this.rotation < 0) {
+            this.rotation += 360; // Correct negative angles
+        }
+
+        // Recalculate velocity based on the new angle
+        // Convert angle to radians for Math functions
+        const radians = this.rotation * Math.PI / 180;
+        this.velocityX = Math.cos(radians) * this.speed;
+        this.velocityY = Math.sin(radians) * this.speed;
+    }
+
     private smoothRotation(desiredAngle: number): number {
         let desiredRotation = normalizeAngle(desiredAngle);
         let rotationDifference = desiredRotation - this.rotation;
@@ -251,35 +361,73 @@ class Player {
         } else if (rotationDifference > 0) {
             this.rotateLeft(this.rotationSpeed); // Need to rotate counterclockwise
         } else {
+
             this.rotateRight(this.rotationSpeed); // Need to rotate clockwise
         }
 
         return desiredRotation;
     }
 
+    private getRandomAngle(min: number, max: number): number {
+        const angle = Math.random() * (max - min) + min;
+        return Math.random() > 0.5 ? angle : -angle; // Randomly choose to rotate left or right
+    }
+    isRotating = false;
     private explore(): void {
-        // Simple exploration logic: Change direction randomly at intervals
-        if (Math.random() < 0.009) {
-            const randomAngle = Math.random() * 360; // Choose a random angle
-            this.smoothRotation(randomAngle);
+        if (Math.random() < 0.009) { // Adjust this threshold to control how often direction changes occur
+            // Ensure random angle selection is more controlled and varied
+            const randomAngle = this.getRandomAngle(3, 200); // Use a helper function to get an angle between 3 and 12 degrees, either direction
+            // this.smoothRotation(this.rotation + randomAngle); // Adjust current rotation by the random angle
+            this.targetRotation = this.rotation + randomAngle;
+        }
+        
+        const { collision, wall } = this.checkWallCollision();
+        const backupTerm = 5;
+
+        if (collision && !this.collidedWithWall) {
+            this.collidedWithWall = true;
+            this.backupCounter = backupTerm;
         }
 
-        // Move forward in the new direction
-        this.moveForward();
+        if (this.collidedWithWall) {
+            if (this.backupCounter > 0) {
+                this.moveBackward();
+                let between3and12 = Math.floor(Math.random() * (12 - 3 + 1)) + 3;
+                this.rotateLeft(between3and12);
+                this.backupCounter--;
+                if (this.backupCounter === 0 && !this.isRotating) {
+                    // Start rotation
+                    this.isRotating = true;
+                    this.targetRotation = Math.random() * 360; // Store the target rotation as a new property if needed
+                }
+            }
+            // Continuously attempt to rotate to the desired angle until successful
+            if (this.isRotating) {
+                let currentRotation = this.smoothRotation(this.targetRotation);
+                if (Math.abs(normalizeAngle(currentRotation) - normalizeAngle(this.targetRotation)) < this.rotationSpeed) {
+                    this.isRotating = false; // Rotation complete
+                    this.collidedWithWall = false; // Allow moving forward again
+                }
+            }
+        } else if (!this.isRotating) {
+            // Normal movement allowed only if not currently rotating
+            this.moveForward();
+        }
+        // this.moveForward();
 
         const foodInRange = this.getClosetFoodLocation();
 
         if (foodInRange && this.hunger.hungerLevel > 3) {
             // Food is in range and player is sufficiently hungry
             this.searchForFood(foodInRange);
-        } else {
-            if (Math.random() < 0.001) {
-                const randomAngle = Math.random() * 360; // Choose a random angle
-                this.rotation = randomAngle;
-                let desiredRotation = normalizeAngle(randomAngle);
-                this.smoothRotation(desiredRotation);
-            }
-        }
+        }// } else {
+        //     if (Math.random() < 0.001) {
+        //         const randomAngle = Math.random() * 360; // Choose a random angle
+        //         this.rotation = randomAngle;
+        //         let desiredRotation = normalizeAngle(randomAngle);
+        //         this.smoothRotation(desiredRotation);
+        //     }
+        // }
     }
 
     public applyVelocity(): void {
@@ -381,7 +529,7 @@ class Player {
 
         // Continue moving forward if already facing the food
         if (Math.abs(rotationDifference) < 10) { // 10 degrees tolerance
-            this.moveForward();
+            this.moveForward(); // slight boost forward  like snatching food
         }
     }
 
@@ -424,8 +572,11 @@ class Player {
                 if (!this.avoidPoison) {
                     this.consumeFood(food.nutritionalValue); // Assuming Food has a 'value' property indicating its nutritional value
                     this.game.removeFood(food.location); // Notify the game to remove the consumed food
-                } else if (this.avoidPoison) {
+                } else if (this.avoidPoison && food.nutritionalValue === Nutrition.poison) {
                     console.log("AVOIDED");
+                } else {
+                    this.consumeFood(food.nutritionalValue); // Assuming Food has a 'value' property indicating its nutritional value
+                    this.game.removeFood(food.location); // Notify the game to remove the consumed food
                 }
             }
         });
@@ -476,27 +627,14 @@ class Player {
         }
     }
 
-    checkForCanvasCollision(): void {
-        const turnAngle = 70; // Angle to turn by when hitting an edge
-
-        // Check for collisions and adjust velocity/rotation accordingly
-        if (this.location.x < this.margin) {
-            this.velocityX = -this.velocityX; // Reverse horizontal velocity
-            this.rotateRight(turnAngle); // Rotate right consistently
-        } else if (this.location.x > this.game.width - this.width - this.margin) {
-            this.velocityX = -this.velocityX; // Reverse horizontal velocity
-            this.rotateLeft(turnAngle); // Rotate left consistently
-        }
-
-        if (this.location.y < this.margin) {
-            this.velocityY = -this.velocityY; // Reverse vertical velocity
-            this.rotateLeft(turnAngle); // Rotate left consistently (can be adjusted based on preference)
-        } else if (this.location.y > this.game.height - this.height - this.margin) {
-            this.velocityY = -this.velocityY; // Reverse vertical velocity
-            this.rotateRight(turnAngle); // Rotate right consistently (can be adjusted based on preference)
-        }
+    getRandomRotation(): { angle: number, direction: 'left' | 'right' } {
+        const minAngle = 1; // Minimum angle to ensure there's always some rotation
+        const maxAngle = 10; // Maximum angle
+        const angle = Math.random() * (maxAngle - minAngle) + minAngle;
+        const direction = Math.random() > 0.5 ? 'left' : 'right'; // Randomly choose direction
+        return { angle, direction };
     }
-
+    
     adjustVelocityAndPositionOnCollision(): void {
         const collisionBuffer = 2;
         const minimumSpeed = 10; // Minimum speed after bouncing
