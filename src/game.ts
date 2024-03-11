@@ -40,6 +40,18 @@ class Game {
         this.updateTimer();
     }
 
+    update(): void {
+        this.players.forEach((player) => {
+            if (player.isAlive) {
+                player.update();
+            } else {
+                this.removePlayer(player);
+            }
+        })
+        this.checkFood();
+    }
+
+
     // updateTimer(): void {
     //     let lastTime = 0;
 
@@ -162,7 +174,7 @@ class Game {
             this.players.push(newPlayer);
         }
         const parentDisplayId = 'players-display';
-        const newPlayer = new Player(this, parentDisplayId, this.width/2, this.height/2);
+        const newPlayer = new Player(this, parentDisplayId, this.width / 2, this.height / 2);
         this.players.push(newPlayer);
     }
 
@@ -179,19 +191,6 @@ class Game {
             food.location.y !== location.y);
     }
 
-    update(): void {
-        const now = Date.now();
-        this.food = this.food.filter(food => (now - food.creationTime) < this.foodLifespan);
-
-        this.players.forEach((player) => {
-            if (player.isAlive) {
-                player.update();
-            } else {
-                this.removePlayer(player);
-            }
-        })
-        this.checkFood();
-    }
 
     draw(context: CanvasRenderingContext2D): void {
         this.players.forEach((player) => {
@@ -216,9 +215,26 @@ class Game {
     startFoodInterval(): void {
         this.foodIntervalId = setInterval(() => {
             if (!this.gameActive) return; // Check if game is active before adding food
-            // this.addFood(3);
+            this.addFood(3);
         }, 5000);
+
+        // Start a new interval to gradually remove old food
+        const foodRemovalInterval = 1000; // Check every second for old food to remove
+        setInterval(() => {
+            if (!this.gameActive) return;
+            this.removeExpiredFood();
+        }, foodRemovalInterval);
     }
+
+    removeExpiredFood(): void {
+        const now = Date.now();
+        // Assuming your food array is sorted by creation time, check the first item
+        if (this.food.length > 0 && now - this.food[0].creationTime >= this.foodLifespan) {
+            this.food.shift(); // Remove the first (oldest) food item
+        }
+    }
+
+
     handleMouseMove(event: MouseEvent, canvas: HTMLCanvasElement): void {
         const rect = canvas.getBoundingClientRect(); // Gets the canvas position relative to the viewport
         const scaleX = canvas.width / rect.width; // Relationship bitmap vs. element for X

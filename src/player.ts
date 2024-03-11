@@ -71,7 +71,7 @@ class Player {
         if (this.isAlive === true) {
             if (this.health > 100) this.health = 100;
             if (this.checkHungerLevel() >= 10) {
-                this.health -= .5;
+                this.health -= .05;
             }
             if (this.checkHungerLevel() > 8) {
                 this.searchForFood(this.getClosetFoodLocation());
@@ -152,14 +152,19 @@ class Player {
     }
 
     updateHungerDisplay(): void {
+        // Calculate minutes and seconds from timeRemaining
+        let deathTimeSet = false;
         if (this.hungerDisplay) {
             if (this.isAlive) {
                 this.hungerDisplay.textContent = `Hunger: ${this.hunger.hungerLevel}`;
-            } else {
-                // Use getTimeAlive() to get the elapsed time and display it
-                const timeAlive = this.getTimeAlive();
-                this.hungerDisplay.textContent = `TERMINATED - Time Alive: ${timeAlive} seconds`;
-                this.hungerDisplay.style.color = "red";
+            } else if (!this.isAlive) {
+                if (!deathTimeSet) {
+                    const timeAlive = this.getTimeAlive();
+                    const minutes = Math.floor(timeAlive / 60);
+                    const seconds = Math.floor(timeAlive % 60);
+                    this.hungerDisplay.textContent = `Time Alive: ${minutes}:${seconds} seconds`;
+                    this.hungerDisplay.style.color = "red";
+                }
             }
         } else {
             console.error("Hunger display element not found.");
@@ -248,17 +253,17 @@ class Player {
         const tipPosition = this.calculateTipPosition();
         const baseLeftPosition = this.calculateBaseLeftPosition(); // Ensure this method is correctly implemented
         const baseRightPosition = this.calculateBaseRightPosition(); // Ensure this method is correctly implemented
-    
+
         // Initialize variables to track collision state
         let collision = false;
         let wall: 'top' | 'bottom' | 'left' | 'right' | null = null;
-    
+
         // Define the game area boundaries
         const leftBoundary = 0;
         const rightBoundary = this.game.width;
         const topBoundary = 0;
         const bottomBoundary = this.game.height;
-    
+
         // Check each vertex for wall collision
         const points = [tipPosition, baseLeftPosition, baseRightPosition];
         const margin = 2;
@@ -270,12 +275,12 @@ class Player {
                 break;
             }
             // Right wall collision
-            else if (point.x + (margin + 2)>= rightBoundary) {
+            else if (point.x + (margin + 2) >= rightBoundary) {
                 collision = true;
                 wall = 'right';
                 break;
             }
-    
+
             // Top wall collision
             if (point.y - margin <= topBoundary) {
                 collision = true;
@@ -289,10 +294,10 @@ class Player {
                 break;
             }
         }
-    
+
         return { collision, wall };
     }
-    
+
     // #endregion
 
 
@@ -380,7 +385,7 @@ class Player {
             // this.smoothRotation(this.rotation + randomAngle); // Adjust current rotation by the random angle
             this.targetRotation = this.rotation + randomAngle;
         }
-        
+
         const { collision, wall } = this.checkWallCollision();
         const backupTerm = 5;
 
@@ -634,7 +639,7 @@ class Player {
         const direction = Math.random() > 0.5 ? 'left' : 'right'; // Randomly choose direction
         return { angle, direction };
     }
-    
+
     adjustVelocityAndPositionOnCollision(): void {
         const collisionBuffer = 2;
         const minimumSpeed = 10; // Minimum speed after bouncing
