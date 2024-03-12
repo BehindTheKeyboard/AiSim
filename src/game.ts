@@ -278,8 +278,7 @@ class Game {
             `<br>Hunger: ${player.hunger.hungerLevel}` +
             `<br>Can ID Poison: ${player.canIdentifyPoison}` +
             `<br> Age: ${player.playerAge}` +
-            `<br> Time Alive: ${this.formatTime(timeAlive)}` +
-            `<br> LocX: ${player.location.x} LocY: ${player.location.y}`
+            `<br> Time Alive: ${this.formatTime(timeAlive)}`
     }
     private formatTime(seconds: number): string {
         const minutes = Math.floor(seconds / 60);

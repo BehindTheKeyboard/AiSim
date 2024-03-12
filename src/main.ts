@@ -8,7 +8,7 @@ window.addEventListener('load', function () {
 
     const game = new Game(canvas.width, canvas.height, 300);
     game.addPlayers(10);
-    game.addFood(20);
+    game.addFood(30);
     game.initializeInputHandler(canvas);
     game.startGame();
     function animate(): void {

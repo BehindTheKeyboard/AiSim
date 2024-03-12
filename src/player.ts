@@ -71,7 +71,7 @@ class Player {
         if (this.isAlive === true) {
             if (this.health > 100) this.health = 100;
             if (this.checkHungerLevel() >= 10) {
-                this.health -= .05;
+                this.health -= .01;
             }
             if (this.checkHungerLevel() > 8) {
                 this.searchForFood(this.getClosetFoodLocation());
@@ -184,7 +184,7 @@ class Player {
         healthLabel.textContent = 'Health: ';
         healthLabel.style.marginRight = '10px'; // Add some space between the label and the bar
         healthDisplay.appendChild(healthLabel); // Append the label to the healthDisplay
-
+        
         const healthBar = document.createElement('div');
         healthBar.className = 'health-bar';
         healthDisplay.appendChild(healthBar); // Append the healthBar after the label
@@ -479,7 +479,8 @@ class Player {
                 console.log(this.playerDisplayId, " is sick");
                 eatSound = "./sounds/Ugg.mp3";
             } else {
-                this.playSound("sounds/Nope.mp3");
+                console.log("NOPE!!")
+                this.playSound("./sounds/Nope.mp3");
             }
         } else if (foodValue === Nutrition.good) {
             this.speed += .25
