@@ -1,66 +1,72 @@
 import { Game } from "./game";
-import { Age, Hunger, Location, Nutrition, Wall, normalizeAngle } from "./tools.js";
+import { Age, Hunger, Nutrition, PlayerData, playSound, Telemetry, normalizeAngle } from "./tools.js";
 import { Food } from "./food.js"
+import { PlayerGenetics } from "./playerGenetics.js";
+import { Wall } from "./wall";
 
 class Player {
-    game: Game;
-    width: number;
-    height: number;
-    color: string;
-    location: Location;
-    speed: number;
-    maxSpeed: number;
-    rotationSpeed: number = .25;
-    rotation: number = 0;
-    targetRotation: number;
-    hunger: Hunger;
-    velocityX: number = 0;
-    velocityY: number = 0;
-    visionRadius: number = 130;
+    private game: Game;
+    private rotationSpeed: number = .25;
+    private rotation: number = 0;
+    private targetRotation: number;
+    private visionRadius: number = 130;
     isAlive: boolean = true;
-    margin: number = 5; // player buffer distance from canvas walls
     health: number;
-    healthBar: HTMLDivElement = document.createElement('div');
-    hungerDisplay: HTMLDivElement = document.createElement('div');
+    private healthBar: HTMLDivElement = document.createElement('div');
+    private healthStatus: HTMLSpanElement = document.createElement('span');
+    private hungerDisplay: HTMLDivElement = document.createElement('div');
     playerDisplayId: string = "";
-    playerAge: Age;
-    foodAmount: number = 0;
-    creationTime: Date;
+    private foodAmount: number = 0;
+    private creationTime: Date;
     canIdentifyPoison: boolean;
-    avoidPoison: boolean;
-    hasConsumedPoison: boolean;
-    identifyPoisonChance: number = 0.50;
-    wallHitCounter: number = 0;
-    collidedWithWall = false;
-    hasRotatedPostCollision = false;
-    backupCounter = 30;
+    private avoidPoison: boolean;
+    private hasConsumedPoison: boolean;
+    private identifyPoisonChance: number = 0.50;
+    private collidedWithWall = false;
+    private backupCounter = 30;
+    private isRotating = false;
+    private playerGenetics = new PlayerGenetics();
 
     // #region constructor
     constructor(game: Game, parentDisplayId: string, x?: number, y?: number) {
+        this.playerGenetics.telemetryGene = {
+            maxSpeed: 1,
+            speed: .25,
+            velocity: {
+                velocityX: 0,
+                velocityY: 0,
+            },
+            location: {
+                x: 0,
+                y: 0,
+            },
+        }
+        this.playerGenetics.playerDataGene = {
+            age: "Baby",
+            color: "rgb(153, 0, 0)",
+            height: 10,
+            width: 6,
+            playerDisplayId: "" //gets set later
+        }
         this.hasConsumedPoison = false;
         this.avoidPoison = false;
         this.canIdentifyPoison = false;
-        this.playerAge = "Baby";
         this.creationTime = new Date();
         this.game = game;
-        this.width = 10;
-        this.height = 6;
-        this.color = "rgb(153, 0, 0)";
         if (x !== undefined && y !== undefined) {
-            this.location = { x, y };
+            this.playerGenetics.telemetryGene.location = { x, y };
         } else {
-            this.location = { x: 0, y: 0 };
-        }
-        this.speed = .25;
-        this.maxSpeed = 1;
-        this.hunger = { hungerLevel: 0, maxHunger: 10, hungerIncreaseRate: .25 };
+            this.playerGenetics.telemetryGene.location = { x: 0, y: 0 };
+        };
         this.rotation = Math.random() * 360;
         this.health = 100;
         this.targetRotation = 0;
 
         this.createPlayerDisplay(parentDisplayId, game);
         this.createHungerDisplay();
-        this.createHealthDisplay();
+        if (this.isAlive) {
+            this.createHealthDisplay();
+        }
         this.updateHungerDisplay();
         this.updateHealthDisplay();
         this.startHungerInterval();
@@ -82,7 +88,6 @@ class Player {
                 this.health = 0;
                 this.isAlive = false;
             }
-            this.explore();
             this.smoothRotation(this.targetRotation);
             this.updateHealthDisplay();
             this.applyVelocity();
@@ -96,25 +101,50 @@ class Player {
         context.save(); // Save the current state of the context
 
         // Move the context to the center of the player
-        context.translate(this.location.x + this.width / 2, this.location.y + this.height / 2);
+        context.translate(
+            this.playerGenetics.telemetryGene.location.x +
+            this.playerGenetics.playerDataGene.width / 2,
+            this.playerGenetics.telemetryGene.location.y +
+            this.playerGenetics.playerDataGene.height / 2
+        );
         context.rotate(this.radians(this.rotation)); // Rotate to the player's current rotation
 
         context.beginPath();
-        context.moveTo(this.width / 2, 0); //tip to the right
-        context.lineTo(-this.width / 2, this.height / 2); // Bottom left
-        context.lineTo(-this.width / 2, -this.height / 2); // Top left
+        context.moveTo(this.playerGenetics.playerDataGene.width / 2, 0); //tip to the right
+        context.lineTo(-this.playerGenetics.playerDataGene.width / 2, this.playerGenetics.playerDataGene.height / 2); // Bottom left
+        context.lineTo(-this.playerGenetics.playerDataGene.width / 2, -this.playerGenetics.playerDataGene.height / 2); // Top left
         context.closePath();
-        context.fillStyle = this.color;
+        context.fillStyle = this.playerGenetics.playerDataGene.color;
         context.fill();
         context.restore(); // Restore the context state to what it was before transformations
+    }
+
+    // #region getters and setters
+    getPlayerLocation(): { x: number, y: number } {
+        return { x: this.playerGenetics.telemetryGene.location.x, y: this.playerGenetics.telemetryGene.location.y }
+    }
+    getPlayerSize(): { width: number, height: number } {
+        return { width: this.playerGenetics.playerDataGene.width, height: this.playerGenetics.playerDataGene.height };
+    }
+    getPlayerName(): string {
+        return this.playerGenetics.playerDataGene.playerDisplayId;
+    }
+    getPlayerHunger(): number {
+        return this.playerGenetics.hungerGene.hungerLevel;
+    }
+    // #endregion
+
+    die(): void {
+        // this.removeHealthDisplay();
+        console.log(`Player ${this.playerGenetics.playerDataGene.playerDisplayId} has died.`);
     }
 
     createPlayerDisplay(parentDisplayId: string, game: Game): void {
         // Create player display container
         const playerDisplayContainer = document.createElement('div');
         playerDisplayContainer.className = 'player-display-container';
-        this.playerDisplayId = `Player: ${game.players.length + 1}`;
-        playerDisplayContainer.id = this.playerDisplayId;
+        this.playerGenetics.playerDataGene.playerDisplayId = `Player: ${game.players.length + 1}`;
+        playerDisplayContainer.id = this.playerGenetics.playerDataGene.playerDisplayId;
 
         // Append the player display container to the parent element
         const parentElement = document.getElementById(parentDisplayId);
@@ -124,31 +154,25 @@ class Player {
     }
 
     createHungerDisplay(): void {
-        const container = document.getElementById(this.playerDisplayId);
+        const container = document.getElementById(this.playerGenetics.playerDataGene.playerDisplayId);
         if (!container) {
-            console.error(`Container with ID '${this.playerDisplayId}' not found.`);
+            console.error(`Container with ID '${this.playerGenetics.playerDataGene.playerDisplayId}' not found.`);
             return;
         }
 
         // Create and append the player identifier display
         const playerIdentifier = document.createElement('div');
-        playerIdentifier.textContent = this.playerDisplayId;
+        playerIdentifier.textContent = this.playerGenetics.playerDataGene.playerDisplayId;
         container.appendChild(playerIdentifier);
 
         // Create and append the hunger display
         const hungerDisplay = document.createElement('div');
         hungerDisplay.className = 'hunger-display';
-        hungerDisplay.textContent = `Hunger: ${this.hunger.hungerLevel}`;
+        hungerDisplay.textContent = `Hunger: ${this.playerGenetics.hungerGene.hungerLevel}`;
         container.appendChild(hungerDisplay);
 
         // Save the hunger display for later updates
         this.hungerDisplay = hungerDisplay;
-    }
-
-    checkSpeed(): void {
-        if (this.speed >= this.maxSpeed) {
-            this.speed = this.maxSpeed;
-        }
     }
 
     updateHungerDisplay(): void {
@@ -156,15 +180,15 @@ class Player {
         let deathTimeSet = false;
         if (this.hungerDisplay) {
             if (this.isAlive) {
-                this.hungerDisplay.textContent = `Hunger: ${this.hunger.hungerLevel}`;
+                this.hungerDisplay.textContent = `Hunger: ${this.playerGenetics.hungerGene.hungerLevel}`;
             } else if (!this.isAlive) {
-                if (!deathTimeSet) {
-                    const timeAlive = this.getTimeAlive();
-                    const minutes = Math.floor(timeAlive / 60);
-                    const seconds = Math.floor(timeAlive % 60);
-                    this.hungerDisplay.textContent = `Time Alive: ${minutes}:${seconds} seconds`;
-                    this.hungerDisplay.style.color = "red";
-                }
+                // if (!deathTimeSet) {
+                //     const timeAlive = this.getTimeAlive();
+                //     const minutes = Math.floor(timeAlive / 60);
+                //     const seconds = Math.floor(timeAlive % 60);
+                //     this.hungerDisplay.textContent = `Time Alive: ${minutes}:${seconds} seconds`;
+                //     this.hungerDisplay.style.color = "red";
+                // }
             }
         } else {
             console.error("Hunger display element not found.");
@@ -184,10 +208,14 @@ class Player {
         healthLabel.textContent = 'Health: ';
         healthLabel.style.marginRight = '10px'; // Add some space between the label and the bar
         healthDisplay.appendChild(healthLabel); // Append the label to the healthDisplay
-        
+
         const healthBar = document.createElement('div');
         healthBar.className = 'health-bar';
         healthDisplay.appendChild(healthBar); // Append the healthBar after the label
+
+        const healthStatus = document.createElement('span');
+        healthStatus.id = 'health-status'; // Set an ID for easy access
+        healthDisplay.appendChild(healthStatus); // Append the health status after the health bar
 
         // Assuming 'players-display' is the ID of the container where you want to append the displays
         const container = document.getElementById('players-display');
@@ -198,6 +226,7 @@ class Player {
 
         // Store reference to healthBar for later updates
         this.healthBar = healthBar;
+        this.healthStatus = healthStatus;
     }
 
     updateHealthDisplay() {
@@ -207,43 +236,57 @@ class Player {
         const red = Math.floor(255 * (1 - this.healthPercentage() / 100));
         const green = Math.floor(255 * (this.healthPercentage() / 100));
         this.healthBar.style.backgroundColor = `rgb(${red}, ${green}, 0)`;
+        // Update health status based on player's health
+        if (this.isAlive) {
+            this.healthStatus.textContent = '';
+        } else {
+            this.healthStatus.textContent = 'Dead';
+            this.healthStatus.style.color = "red";
+            this.healthStatus.style.fontWeight = "bold";
+        }
     }
 
     healthPercentage(): number {
         return this.health;
     }
 
+    checkSpeed(): void {
+        if (this.playerGenetics.telemetryGene.speed >= this.playerGenetics.telemetryGene.maxSpeed) {
+            this.playerGenetics.telemetryGene.speed = this.playerGenetics.telemetryGene.maxSpeed;
+        }
+    }
+
     // #region player wall collision checks
     private calculateBaseLeftPosition(): { x: number, y: number } {
-        const halfWidth = this.width / 2;
-        const halfHeight = this.height / 2;
+        const halfWidth = this.playerGenetics.playerDataGene.width / 2;
+        const halfHeight = this.playerGenetics.playerDataGene.height / 2;
         // Calculate the angle for the left point
         const angleLeft = this.radians(this.rotation - 90);
         // Calculate the position
-        const xLeft = this.location.x + halfWidth + Math.cos(angleLeft) * halfHeight;
-        const yLeft = this.location.y + halfHeight + Math.sin(angleLeft) * halfHeight;
+        const xLeft = this.playerGenetics.telemetryGene.location.x + halfWidth + Math.cos(angleLeft) * halfHeight;
+        const yLeft = this.playerGenetics.telemetryGene.location.y + halfHeight + Math.sin(angleLeft) * halfHeight;
         return { x: xLeft, y: yLeft };
     }
 
     private calculateBaseRightPosition(): { x: number, y: number } {
-        const halfWidth = this.width / 2;
-        const halfHeight = this.height / 2;
+        const halfWidth = this.playerGenetics.playerDataGene.width / 2;
+        const halfHeight = this.playerGenetics.playerDataGene.height / 2;
         // Calculate the angle for the right point
         const angleRight = this.radians(this.rotation + 90);
         // Calculate the position
-        const xRight = this.location.x + halfWidth + Math.cos(angleRight) * halfHeight;
-        const yRight = this.location.y + halfHeight + Math.sin(angleRight) * halfHeight;
+        const xRight = this.playerGenetics.telemetryGene.location.x + halfWidth + Math.cos(angleRight) * halfHeight;
+        const yRight = this.playerGenetics.telemetryGene.location.y + halfHeight + Math.sin(angleRight) * halfHeight;
         return { x: xRight, y: yRight };
     }
 
     private calculateTipPosition(): { x: number; y: number } {
         // Calculate the tip's position relative to the center
-        const offsetX = Math.cos(this.radians(this.rotation)) * (this.width / 2);
-        const offsetY = Math.sin(this.radians(this.rotation)) * (this.width / 2);
+        const offsetX = Math.cos(this.radians(this.rotation)) * (this.playerGenetics.playerDataGene.width / 2);
+        const offsetY = Math.sin(this.radians(this.rotation)) * (this.playerGenetics.playerDataGene.width / 2);
 
         // Apply the offset to the center position to get the tip's global position
-        const tipX = this.location.x + this.width / 2 + offsetX;
-        const tipY = this.location.y + this.height / 2 + offsetY;
+        const tipX = this.playerGenetics.telemetryGene.location.x + this.playerGenetics.playerDataGene.width / 2 + offsetX;
+        const tipY = this.playerGenetics.telemetryGene.location.y + this.playerGenetics.playerDataGene.height / 2 + offsetY;
 
         return { x: tipX, y: tipY };
     }
@@ -299,62 +342,45 @@ class Player {
     }
 
     // #endregion
-
-
     // #region player movement
-    private rotateRight(degrees: number): void {
-        this.rotation -= degrees; // Decrease the angle for clockwise rotation
+    rotateRight(degrees: number): void {
+        this.rotation += degrees; // Decrease the angle for clockwise rotation
         if (this.rotation < 0) {
             this.rotation += 360; // Normalize to ensure it's within 0-360 degrees
         }
     }
 
 
-    private rotateLeft(degrees: number): void {
-        this.rotation += degrees; // Increase the angle for counterclockwise rotation
+    rotateLeft(degrees: number): void {
+        this.rotation -= degrees; // Increase the angle for counterclockwise rotation
         if (this.rotation >= 360) {
             this.rotation -= 360; // Normalize to ensure it's within 0-360 degrees
         }
     }
 
     private adjustPositionWithinBoundaries(nextX: number, nextY: number): void {
-        this.location.x = Math.max(0, Math.min(nextX, this.game.width - this.width));
-        this.location.y = Math.max(0, Math.min(nextY, this.game.height - this.height));
+        this.playerGenetics.telemetryGene.location.x = Math.max(0, Math.min(nextX, this.game.width - this.playerGenetics.playerDataGene.width));
+        this.playerGenetics.telemetryGene.location.y = Math.max(0, Math.min(nextY, this.game.height - this.playerGenetics.playerDataGene.height));
     }
 
-    private moveForward(): void {
-        this.velocityX += Math.cos(this.radians(this.rotation)) * this.speed;
-        this.velocityY += Math.sin(this.radians(this.rotation)) * this.speed;
+    moveForward(): void {
+        this.playerGenetics.telemetryGene.velocity.velocityX += Math.cos(this.radians(this.rotation)) * this.playerGenetics.telemetryGene.speed;
+        this.playerGenetics.telemetryGene.velocity.velocityY += Math.sin(this.radians(this.rotation)) * this.playerGenetics.telemetryGene.speed;
     }
 
-    private moveBackward(): void {
-        this.velocityX -= Math.cos(this.radians(this.rotation)) * this.speed;
-        this.velocityY -= Math.sin(this.radians(this.rotation)) * this.speed;
+    moveBackward(): void {
+        this.playerGenetics.telemetryGene.velocity.velocityX -= Math.cos(this.radians(this.rotation)) * this.playerGenetics.telemetryGene.speed;
+        this.playerGenetics.telemetryGene.velocity.velocityY -= Math.sin(this.radians(this.rotation)) * this.playerGenetics.telemetryGene.speed;
     }
 
     private strafeLeft(): void {
-        this.velocityX += Math.cos(this.radians(this.rotation - 90)) * this.speed;
-        this.velocityY += Math.sin(this.radians(this.rotation - 90)) * this.speed;
+        this.playerGenetics.telemetryGene.velocity.velocityX += Math.cos(this.radians(this.rotation - 90)) * this.playerGenetics.telemetryGene.speed;
+        this.playerGenetics.telemetryGene.velocity.velocityY += Math.sin(this.radians(this.rotation - 90)) * this.playerGenetics.telemetryGene.speed;
     }
 
     private strafeRight(): void {
-        this.velocityX += Math.cos(this.radians(this.rotation + 90)) * this.speed;
-        this.velocityY += Math.sin(this.radians(this.rotation + 90)) * this.speed;
-    }
-
-    rotate(degrees: number): void {
-        // Update the entity's angle by adding the rotation degrees
-        // Ensuring the angle stays within the range of 0 to 360
-        this.rotation = (this.rotation + degrees) % 360;
-        if (this.rotation < 0) {
-            this.rotation += 360; // Correct negative angles
-        }
-
-        // Recalculate velocity based on the new angle
-        // Convert angle to radians for Math functions
-        const radians = this.rotation * Math.PI / 180;
-        this.velocityX = Math.cos(radians) * this.speed;
-        this.velocityY = Math.sin(radians) * this.speed;
+        this.playerGenetics.telemetryGene.velocity.velocityX += Math.cos(this.radians(this.rotation + 90)) * this.playerGenetics.telemetryGene.speed;
+        this.playerGenetics.telemetryGene.velocity.velocityY += Math.sin(this.radians(this.rotation + 90)) * this.playerGenetics.telemetryGene.speed;
     }
 
     private smoothRotation(desiredAngle: number): number {
@@ -377,7 +403,8 @@ class Player {
         const angle = Math.random() * (max - min) + min;
         return Math.random() > 0.5 ? angle : -angle; // Randomly choose to rotate left or right
     }
-    isRotating = false;
+
+
     private explore(): void {
         if (Math.random() < 0.009) { // Adjust this threshold to control how often direction changes occur
             // Ensure random angle selection is more controlled and varied
@@ -395,6 +422,7 @@ class Player {
         }
 
         if (this.collidedWithWall) {
+            console.log("Collision with wall");
             if (this.backupCounter > 0) {
                 this.moveBackward();
                 let between3and12 = Math.floor(Math.random() * (12 - 3 + 1)) + 3;
@@ -418,31 +446,23 @@ class Player {
             // Normal movement allowed only if not currently rotating
             this.moveForward();
         }
-        // this.moveForward();
 
         const foodInRange = this.getClosetFoodLocation();
 
-        if (foodInRange && this.hunger.hungerLevel > 3) {
+        if (foodInRange && this.playerGenetics.hungerGene.hungerLevel > 3) {
             // Food is in range and player is sufficiently hungry
             this.searchForFood(foodInRange);
-        }// } else {
-        //     if (Math.random() < 0.001) {
-        //         const randomAngle = Math.random() * 360; // Choose a random angle
-        //         this.rotation = randomAngle;
-        //         let desiredRotation = normalizeAngle(randomAngle);
-        //         this.smoothRotation(desiredRotation);
-        //     }
-        // }
+        }
     }
 
     public applyVelocity(): void {
-        const nextX = this.location.x + this.velocityX;
-        const nextY = this.location.y + this.velocityY;
+        const nextX = this.playerGenetics.telemetryGene.location.x + this.playerGenetics.telemetryGene.velocity.velocityX;
+        const nextY = this.playerGenetics.telemetryGene.location.y + this.playerGenetics.telemetryGene.velocity.velocityY;
         this.adjustPositionWithinBoundaries(nextX, nextY);
 
         // Optional: Apply friction or damping to gradually reduce velocity
-        this.velocityX *= 0.2;
-        this.velocityY *= 0.2;
+        this.playerGenetics.telemetryGene.velocity.velocityX *= 0.2;
+        this.playerGenetics.telemetryGene.velocity.velocityY *= 0.2;
     }
 
     private radians(degrees: number): number {
@@ -452,54 +472,49 @@ class Player {
 
     // #region Hunger
     increaseHunger(): void {
-        this.hunger.hungerLevel += this.hunger.hungerIncreaseRate;
-        if (this.hunger.hungerLevel > this.hunger.maxHunger) {
-            this.hunger.hungerLevel = this.hunger.maxHunger;
+        this.playerGenetics.hungerGene.hungerLevel += this.playerGenetics.hungerGene.hungerIncreaseRate;
+        if (this.playerGenetics.hungerGene.hungerLevel > this.playerGenetics.hungerGene.maxHunger) {
+            this.playerGenetics.hungerGene.hungerLevel = this.playerGenetics.hungerGene.maxHunger;
         }
         this.updateHungerDisplay();
     }
 
-    playSound(soundFile: string): void {
-        const audio = new Audio(soundFile);
-        audio.play().catch(err => console.error("Error playing Eat Sound: ", err));
-    }
-
     consumeFood(foodValue: number): void {
-        this.hunger.hungerLevel -= foodValue;
+        this.playerGenetics.hungerGene.hungerLevel -= foodValue;
         let eatSound = "";
         if (foodValue === Nutrition.poison) {
             if (!this.avoidPoison) {
                 this.health -= 10;
-                this.speed -= .25
+                this.playerGenetics.telemetryGene.speed -= .25
                 this.foodAmount -= 2;
-                if (this.speed < .25) this.speed = .25;
+                if (this.playerGenetics.telemetryGene.speed < .25) this.playerGenetics.telemetryGene.speed = .25;
                 this.hasConsumedPoison = true;
                 this.identifyPoisonChance += 0.05;
                 this.identifyPoison();
-                console.log(this.playerDisplayId, " is sick");
+                console.log(this.playerGenetics.playerDataGene.playerDisplayId, " is sick");
                 eatSound = "./sounds/Ugg.mp3";
             } else {
                 console.log("NOPE!!")
-                this.playSound("./sounds/Nope.mp3");
+                playSound("./sounds/Nope.mp3");
             }
         } else if (foodValue === Nutrition.good) {
-            this.speed += .25
+            this.playerGenetics.telemetryGene.speed += .25
             this.health += 15;
             this.foodAmount += 1;
             eatSound = "./sounds/Munch.mp3";
         } else if (foodValue === Nutrition.normal) {
-            this.speed += .15
+            this.playerGenetics.telemetryGene.speed += .15
             this.health += 8;
             this.foodAmount += .5;
             eatSound = "./sounds/Munch.mp3";
         } else if (foodValue === Nutrition.low) {/* BLUE */
-            this.speed += .05;
+            this.playerGenetics.telemetryGene.speed += .05;
             this.health += 2;
             this.foodAmount += .25;
             eatSound = "./sounds/Munch.mp3";
         }
-        this.playSound(eatSound);
-        if (this.hunger.hungerLevel < 0) this.hunger.hungerLevel = 0;
+        playSound(eatSound);
+        if (this.playerGenetics.hungerGene.hungerLevel < 0) this.playerGenetics.hungerGene.hungerLevel = 0;
         this.updateHungerDisplay();
         this.updateHealthDisplay();
     }
@@ -511,7 +526,7 @@ class Player {
                     this.canIdentifyPoison = true;
                     this.avoidPoison = true;
                     console.log("Can now Identify Poison");
-                    this.playSound("sounds/AvoidPoison.mp3");
+                    playSound("sounds/AvoidPoison.mp3");
                 }
             }
         }
@@ -521,8 +536,8 @@ class Player {
             this.explore();
             return;
         }
-        const dx = food.location.x - this.location.x;
-        const dy = food.location.y - this.location.y;
+        const dx = food.location.x - this.playerGenetics.telemetryGene.location.x;
+        const dy = food.location.y - this.playerGenetics.telemetryGene.location.y;
         const distanceToFood = Math.sqrt(dx * dx + dy * dy);
         const angleToFood = Math.atan2(dy, dx) * (180 / Math.PI);
         let rotationDifference = this.smoothRotation(angleToFood);
@@ -530,13 +545,17 @@ class Player {
         const decelerationDistance = 10; // Distance within which to start slowing down
         if (distanceToFood < decelerationDistance) {
             const speedFactor = distanceToFood / decelerationDistance; // Slow down as it gets closer
-            this.speed = Math.max(this.speed * speedFactor, .25); // Ensure there's a minimum speed
+            this.playerGenetics.telemetryGene.speed = Math.max(this.playerGenetics.telemetryGene.speed * speedFactor, .25); // Ensure there's a minimum speed
         }
 
         // Continue moving forward if already facing the food
         if (Math.abs(rotationDifference) < 10) { // 10 degrees tolerance
-            this.moveForward(); // slight boost forward  like snatching food
+            this.snatchFood();
         }
+    }
+
+    snatchFood(): void {
+        this.moveForward();
     }
 
     getClosetFoodLocation(): Food | null {
@@ -548,8 +567,8 @@ class Player {
         let closestDistance = Infinity;
 
         for (const food of this.game.food) {
-            const dx = this.location.x - food.location.x;
-            const dy = this.location.y - food.location.y;
+            const dx = this.playerGenetics.telemetryGene.location.x - food.location.x;
+            const dy = this.playerGenetics.telemetryGene.location.y - food.location.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance < this.visionRadius && distance < closestDistance) {
@@ -573,8 +592,8 @@ class Player {
 
     private checkForFoodCollision(): void {
         this.game.food.forEach((food, index) => {
-            if (Math.abs(this.location.x - food.location.x) < this.width &&
-                Math.abs(this.location.y - food.location.y) < this.height) {
+            if (Math.abs(this.playerGenetics.telemetryGene.location.x - food.location.x) < this.playerGenetics.playerDataGene.width &&
+                Math.abs(this.playerGenetics.telemetryGene.location.y - food.location.y) < this.playerGenetics.playerDataGene.height) {
                 if (!this.avoidPoison) {
                     this.consumeFood(food.nutritionalValue); // Assuming Food has a 'value' property indicating its nutritional value
                     this.game.removeFood(food.location); // Notify the game to remove the consumed food
@@ -589,14 +608,14 @@ class Player {
     }
 
     checkHungerLevel(): number {
-        return this.hunger.hungerLevel;
+        return this.playerGenetics.hungerGene.hungerLevel;
     }
 
     // #endregion
 
     collisionAvoidance(player1: Player, player2: Player): void {
-        const dx = player2.location.x - player1.location.x;
-        const dy = player2.location.y - player1.location.y;
+        const dx = player2.playerGenetics.telemetryGene.location.x - player1.playerGenetics.telemetryGene.location.x;
+        const dy = player2.playerGenetics.telemetryGene.location.y - player1.playerGenetics.telemetryGene.location.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
         // Ensure there's no division by zero
@@ -606,17 +625,17 @@ class Player {
         const ny = dy / distance;
 
         // Apply a repulsion force by adjusting velocities
-        const repulsionStrength = 2; // Adjust as needed
-        player1.velocityX -= nx * repulsionStrength;
-        player1.velocityY -= ny * repulsionStrength;
-        player2.velocityX += nx * repulsionStrength;
-        player2.velocityY += ny * repulsionStrength;
+        const repulsionStrength = 1; // Adjust as needed
+        player1.playerGenetics.telemetryGene.velocity.velocityX -= nx * repulsionStrength;
+        player1.playerGenetics.telemetryGene.velocity.velocityY -= ny * repulsionStrength;
+        player2.playerGenetics.telemetryGene.velocity.velocityX += nx * repulsionStrength;
+        player2.playerGenetics.telemetryGene.velocity.velocityY += ny * repulsionStrength;
 
         // Determine the direction to rotate based on their relative position
         const rotationAdjustment = 10; // Adjust based on desired rotation speed
 
         // Assuming positive rotation is clockwise and negative is counterclockwise
-        if (dx * player1.velocityY - dy * player1.velocityX > 0) {
+        if (dx * player1.playerGenetics.telemetryGene.velocity.velocityY - dy * player1.playerGenetics.telemetryGene.velocity.velocityX > 0) {
             // Player 1 should rotate left (counterclockwise)
             player1.rotateLeft(rotationAdjustment);
         } else {
@@ -624,7 +643,7 @@ class Player {
             player1.rotateRight(rotationAdjustment);
         }
 
-        if (dx * player2.velocityY - dy * player2.velocityX < 0) {
+        if (dx * player2.playerGenetics.telemetryGene.velocity.velocityY - dy * player2.playerGenetics.telemetryGene.velocity.velocityX < 0) {
             // Player 2 should rotate left (counterclockwise)
             player2.rotateLeft(rotationAdjustment);
         } else {
@@ -632,6 +651,64 @@ class Player {
             player2.rotateRight(rotationAdjustment);
         }
     }
+
+    collisionAvoidanceWithWall(wall: Wall): void {
+        const playerX = this.getPlayerLocation().x;
+        const playerY = this.getPlayerLocation().y;
+        const playerWidth = this.getPlayerSize().width;
+        const playerHeight = this.getPlayerSize().height;
+
+        // Calculate the player's bounding box
+        const playerLeft = playerX;
+        const playerRight = playerX + playerWidth;
+        const playerTop = playerY;
+        const playerBottom = playerY + playerHeight;
+
+        // Calculate the wall's bounding box
+        const wallLeft = wall.position.x;
+        const wallRight = wall.position.x + wall.width;
+        const wallTop = wall.position.y;
+        const wallBottom = wall.position.y + wall.height;
+
+        // Check for collision
+        if (playerRight > wallLeft && playerLeft < wallRight && playerBottom > wallTop && playerTop < wallBottom) {
+            // Calculate the overlap amounts in each direction
+            const overlapLeft = playerRight - wallLeft;
+            const overlapRight = wallRight - playerLeft;
+            const overlapTop = playerBottom - wallTop;
+            const overlapBottom = wallBottom - playerTop;
+
+            // Find the minimum overlap to determine the direction of collision
+            const minOverlapX = Math.min(overlapLeft, overlapRight);
+            const minOverlapY = Math.min(overlapTop, overlapBottom);
+
+            // Adjust player's velocity to repel it away from the wall
+            if (minOverlapX < minOverlapY) {
+                // Collision in the horizontal direction
+                if (overlapLeft < overlapRight) {
+                    // Player collided from the right, adjust velocity to move left
+                    this.playerGenetics.telemetryGene.velocity.velocityX -= 2; // Adjust the repulsion strength as needed
+                } else {
+                    // Player collided from the left, adjust velocity to move right
+                    this.playerGenetics.telemetryGene.velocity.velocityX += 2; // Adjust the repulsion strength as needed
+                }
+                // Rotate the player away from the wall
+                this.rotateRight(10); // Adjust rotation angle as needed
+            } else {
+                // Collision in the vertical direction
+                if (overlapTop < overlapBottom) {
+                    // Player collided from below, adjust velocity to move up
+                    this.playerGenetics.telemetryGene.velocity.velocityY -= 2; // Adjust the repulsion strength as needed
+                } else {
+                    // Player collided from above, adjust velocity to move down
+                    this.playerGenetics.telemetryGene.velocity.velocityY += 2; // Adjust the repulsion strength as needed
+                }
+                // Rotate the player away from the wall
+                this.rotateRight(10); // Adjust rotation angle as needed
+            }
+        }
+    }
+
 
     getRandomRotation(): { angle: number, direction: 'left' | 'right' } {
         const minAngle = 1; // Minimum angle to ensure there's always some rotation
@@ -646,38 +723,38 @@ class Player {
         const minimumSpeed = 10; // Minimum speed after bouncing
 
         // Check for collision with left or right walls
-        if (this.location.x <= 0 + collisionBuffer || this.location.x >= this.game.width - this.width - collisionBuffer) {
+        if (this.playerGenetics.telemetryGene.location.x <= 0 + collisionBuffer || this.playerGenetics.telemetryGene.location.x >= this.game.width - this.playerGenetics.playerDataGene.width - collisionBuffer) {
             // Reverse X velocity to simulate a bounce
-            this.velocityX = -this.velocityX;
+            this.playerGenetics.telemetryGene.velocity.velocityX = -this.playerGenetics.telemetryGene.velocity.velocityX;
 
             // Ensure the entity moves with at least the minimum speed
-            if (Math.abs(this.velocityX) < minimumSpeed) {
-                this.velocityX = this.velocityX < 0 ? -minimumSpeed : minimumSpeed;
+            if (Math.abs(this.playerGenetics.telemetryGene.velocity.velocityX) < minimumSpeed) {
+                this.playerGenetics.telemetryGene.velocity.velocityX = this.playerGenetics.telemetryGene.velocity.velocityX < 0 ? -minimumSpeed : minimumSpeed;
             }
 
             // Optional: Adjust location to prevent sticking to the wall
-            if (this.location.x <= 0 + collisionBuffer) {
-                this.location.x = 0 + collisionBuffer;
+            if (this.playerGenetics.telemetryGene.location.x <= 0 + collisionBuffer) {
+                this.playerGenetics.telemetryGene.location.x = 0 + collisionBuffer;
             } else {
-                this.location.x = this.game.width - this.width - collisionBuffer;
+                this.playerGenetics.telemetryGene.location.x = this.game.width - this.playerGenetics.playerDataGene.width - collisionBuffer;
             }
         }
 
         // Check for collision with top or bottom walls
-        if (this.location.y <= 0 + collisionBuffer || this.location.y >= this.game.height - this.height - collisionBuffer) {
+        if (this.playerGenetics.telemetryGene.location.y <= 0 + collisionBuffer || this.playerGenetics.telemetryGene.location.y >= this.game.height - this.playerGenetics.playerDataGene.height - collisionBuffer) {
             // Reverse Y velocity to simulate a bounce
-            this.velocityY = -this.velocityY;
+            this.playerGenetics.telemetryGene.velocity.velocityY = -this.playerGenetics.telemetryGene.velocity.velocityY;
 
             // Ensure the entity moves with at least the minimum speed
-            if (Math.abs(this.velocityY) < minimumSpeed) {
-                this.velocityY = this.velocityY < 0 ? -minimumSpeed : minimumSpeed;
+            if (Math.abs(this.playerGenetics.telemetryGene.velocity.velocityY) < minimumSpeed) {
+                this.playerGenetics.telemetryGene.velocity.velocityY = this.playerGenetics.telemetryGene.velocity.velocityY < 0 ? -minimumSpeed : minimumSpeed;
             }
 
             // Optional: Adjust location to prevent sticking to the wall
-            if (this.location.y <= 0 + collisionBuffer) {
-                this.location.y = 0 + collisionBuffer;
+            if (this.playerGenetics.telemetryGene.location.y <= 0 + collisionBuffer) {
+                this.playerGenetics.telemetryGene.location.y = 0 + collisionBuffer;
             } else {
-                this.location.y = this.game.height - this.height - collisionBuffer;
+                this.playerGenetics.telemetryGene.location.y = this.game.height - this.playerGenetics.playerDataGene.height - collisionBuffer;
             }
         }
         // Note: Collision with other entities would require additional logic
@@ -685,8 +762,8 @@ class Player {
 
     moveToFood(foodX: number, foodY: number): void {
         // Calculate direction towards food
-        let dx = foodX - this.location.x;
-        let dy = foodY - this.location.y;
+        let dx = foodX - this.playerGenetics.telemetryGene.location.x;
+        let dy = foodY - this.playerGenetics.telemetryGene.location.y;
         let angleToFood = Math.atan2(dy, dx); // Radians
 
         // Update player's rotation to face the food
@@ -694,54 +771,54 @@ class Player {
 
         // Move player towards the food, you might adjust speed or use a different method
         // This is a simplistic approach, consider adding smooth rotation and movement
-        this.location.x += Math.cos(angleToFood) * this.speed;
-        this.location.y += Math.sin(angleToFood) * this.speed;
+        this.playerGenetics.telemetryGene.location.x += Math.cos(angleToFood) * this.playerGenetics.telemetryGene.speed;
+        this.playerGenetics.telemetryGene.location.y += Math.sin(angleToFood) * this.playerGenetics.telemetryGene.speed;
     }
 
     getAge(): Age {
-        return this.playerAge;
+        return this.playerGenetics.playerDataGene.age;
     }
 
     setAge(age: Age) {
-        this.playerAge = age;
+        this.playerGenetics.playerDataGene.age = age;
     }
 
     checkGrowth(): void {
-        switch (this.playerAge) {
+        switch (this.playerGenetics.playerDataGene.age) {
             case "Baby": {
-                this.width = 10;
-                this.height = 6;
-                this.color = "rgb(255, 102, 178)";
+                this.playerGenetics.playerDataGene.width = 10;
+                this.playerGenetics.playerDataGene.height = 6;
+                this.playerGenetics.playerDataGene.color = "rgb(255, 102, 178)";
                 if (this.foodAmount >= 2 && this.getTimeAlive() >= (2 * 60)) {
-                    this.playerAge = "Adalescence";
+                    this.playerGenetics.playerDataGene.age = "Adalescence";
                     this.foodAmount = 0;
                 }
                 break;
             }
             case "Adalescence": {
-                this.width = 15;
-                this.height = 11;
-                this.color = "rgb(153, 0, 0)";
+                this.playerGenetics.playerDataGene.width = 15;
+                this.playerGenetics.playerDataGene.height = 11;
+                this.playerGenetics.playerDataGene.color = "rgb(153, 0, 0)";
                 if (this.foodAmount >= 6 && this.getTimeAlive() >= (12 * 60)) {
-                    this.playerAge = "Adult";
+                    this.playerGenetics.playerDataGene.age = "Adult";
                     this.foodAmount = 0;
                 }
                 break;
             }
             case "Adult": {
-                this.width = 20;
-                this.height = 16;
-                this.color = "rgb(51, 51, 255)";
+                this.playerGenetics.playerDataGene.width = 20;
+                this.playerGenetics.playerDataGene.height = 16;
+                this.playerGenetics.playerDataGene.color = "rgb(51, 51, 255)";
                 if (this.foodAmount >= 12 && this.getTimeAlive() >= (24 * 60)) {
-                    this.playerAge = "Senior";
+                    this.playerGenetics.playerDataGene.age = "Senior";
                     this.foodAmount = 0;
                 }
                 break;
             }
             case "Senior": {
-                this.width = 18;
-                this.height = 14;
-                this.color = "rgb(96, 96, 96)";
+                this.playerGenetics.playerDataGene.width = 18;
+                this.playerGenetics.playerDataGene.height = 14;
+                this.playerGenetics.playerDataGene.color = "rgb(96, 96, 96)";
             }
         }
     }

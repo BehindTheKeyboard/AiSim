@@ -1,42 +1,55 @@
+
 * {
-    margin: 0;
+    margin-top: 10;
     padding: 0;
     box-sizing: border-box;
+    background-color: black;
 }
 
 #gameContainer {
     position: absolute;
     top: 50%;
     left: 50%;
+    width: 75%;
+    height: 100%;
     transform: translate(-50%, -50%);
     text-align: center;
     /* Center-aligns the timerDisplay text */
 }
 
 #canvas1 {
-    border: 3px solid rgb(5, 5, 5);
+    position: center;
+    background-color: rgb(5, 5, 5);
+    border: 3px solid rgb(131, 47, 47);
     max-width: 100%;
-    max-height: 100%;
-    background-color: rgb(216, 213, 230);
+    max-height: 95%;
+    background-color: rgb(5, 5, 5);
     display: block;
-    /* This makes it easier to manage spacing */
     margin: 10px auto 0;
-    /* This adds space above the canvas and centers it horizontally */
+    margin-top: 40px;
+    flex-grow: 1; /* Ensure the canvas expands to fill available space */
 }
 
 #timerDisplay {
     font-size: 24px;
     font-weight: bold;
-    color: black;
-    margin-bottom: 10px;
-    /* Adjusts space above the canvas */
+    color: rgb(196, 193, 193);
+    position: absolute;
+    top: 1px; /* Adjust as needed */
+    left: 50%;
+    transform: translateX(-50%);
+    /* Center the display horizontally */
+    z-index: 1; /* Ensure it's above other elements */
 }
 
 .player-display-container {
+    color:bisque;
     margin-bottom: 1px;
+    width: 210px;
 }
 
-.health-display {
+.health-display { /* This is the health bar container*/
+    color:bisque;
     width: 200px;
     /* Example width */
     height: 20px;
@@ -44,7 +57,8 @@
     margin-bottom: 10px;
 }
 
-.hunger-display {
+.hunger-display { /*Hunger level*/
+    color:bisque;
     width: 100px;
     /* Example width */
     height: 20px;
@@ -52,9 +66,8 @@
     margin-bottom: 1px;
 }
 
-.health-bar {
+.health-bar { /* This is the actual health bar */
     height: 10px;
-    background-color: green;
     width: 150%;
     /* Initial width. Will be dynamically updated. */
     text-align: center;
@@ -63,6 +76,7 @@
 }
 
 #hovered-player-info {
+    color: rgb(201, 199, 199);
     position: absolute;
     right: 5px;
     top: 40px;

@@ -2,12 +2,15 @@ import { InputHandler } from "./input.js";
 import { Player } from "./player.js";
 import { Food } from "./food.js";
 import { Nutrition, isColliding } from "./tools.js";
+import { Level } from "./level.js";
 class Game {
     constructor(width, height, roundTime) {
         this.roundTime = 0;
         this.foodIntervalId = null;
         this.gameOver = false;
         this.foodLifespan = 60000; //One minute
+        this.walls = [];
+        this.levelInstance = new Level();
         this.roundTime = roundTime;
         this.gameActive = false;
         this.timeRemaining = this.roundTime;
@@ -26,40 +29,29 @@ class Game {
         // this.resetGame();
         this.updateTimer();
     }
-    // updateTimer(): void {
-    //     let lastTime = 0;
-    //     const gameLoop = (timeStamp: number) => {
-    //         if (!this.gameActive) return;
-    //         const deltaTime = (timeStamp - lastTime) / 1000;
-    //         this.timeRemaining -= deltaTime;
-    //         // Calculate minutes and seconds from timeRemaining
-    //         const minutes = Math.floor(this.timeRemaining / 60);
-    //         const seconds = Math.floor(this.timeRemaining % 60);
-    //         // Format the minutes and seconds to always show two digits
-    //         const formattedMinutes = String(minutes).padStart(2, '0');
-    //         const formattedSeconds = String(seconds).padStart(2, '0');
-    //         // Update the timer display
-    //         const timerElement = document.getElementById("timerDisplay");
-    //         if (timerElement) {
-    //             this.gameActive ? timerElement.textContent = `Time Remaining: ${formattedMinutes}:${formattedSeconds}` : timerElement.textContent = "Round Ended";
-    //         }
-    //         if (this.timeRemaining <= 0) {
-    //             this.timeRemaining = 0; // Ensure time doesn't go negative
-    //             this.endRound();
-    //             // Optionally, immediately update the display here as well
-    //             const timerElement = document.getElementById("timerDisplay");
-    //             if (timerElement) {
-    //                 timerElement.textContent = "Round Ended";
-    //             }
-    //         } else {
-    //             lastTime = timeStamp;
-    //             requestAnimationFrame(gameLoop);
-    //         }
-    //     };
-    //     if (this.gameActive) {
-    //         requestAnimationFrame(gameLoop);
-    //     }
-    // }
+    update() {
+        var _a;
+        (_a = this.input) === null || _a === void 0 ? void 0 : _a.updatePlayerMovement();
+        this.players.forEach((player) => {
+            if (player.isAlive) {
+                player.update();
+                // Check for collisions with walls
+                // this.walls.forEach((wall) => {
+                //     player.collisionAvoidanceWithWall(wall);
+                // });
+                const currentLevelWalls = this.levelInstance.getLevels()[this.levelInstance.getLevelNumber()];
+                // Check for collisions with walls of the current level
+                currentLevelWalls.forEach((wall) => {
+                    player.collisionAvoidanceWithWall(wall);
+                });
+            }
+            else {
+                player.die();
+                this.removePlayer(player);
+            }
+        });
+        this.checkFood();
+    }
     updateTimer() {
         let lastTime = 0;
         let elapsedTime = 0; // Initialize elapsed time
@@ -73,13 +65,16 @@ class Game {
             // Calculate minutes and seconds from elapsedTime
             const minutes = Math.floor(elapsedTime / 60);
             const seconds = Math.floor(elapsedTime % 60);
-            // Format the minutes and seconds to always show two digits
-            const formattedMinutes = String(minutes).padStart(2, '0');
-            const formattedSeconds = String(seconds).padStart(2, '0');
+            const hours = Math.floor(elapsedTime / 3600);
+            let timeString = "";
+            if (hours > 0) {
+                timeString += `${hours}:`;
+            }
+            timeString += `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
             // Update the timer display
             const timerElement = document.getElementById("timerDisplay");
             if (timerElement) {
-                timerElement.textContent = `Time Elapsed: ${formattedMinutes}:${formattedSeconds}`;
+                timerElement.textContent = `Time Elapsed: ${timeString}`;
             }
             lastTime = timeStamp; // Update lastTime for the next frame
             requestAnimationFrame(gameLoop);
@@ -103,13 +98,13 @@ class Game {
         let nutritionalValue = 0;
         for (let i = 0; i < amount; i++) {
             const rand = Math.random();
-            if (rand < 0.70) {
+            if (rand < 0.45) {
                 nutritionalValue = Nutrition.low;
             }
-            else if (rand < 0.85) {
+            else if (rand < 0.70) {
                 nutritionalValue = Nutrition.normal;
             }
-            else if (rand < 0.95) {
+            else if (rand < 0.90) {
                 nutritionalValue = Nutrition.good;
             }
             else {
@@ -127,7 +122,6 @@ class Game {
         for (let i = 0; i < count; i++) {
             const x = Math.random() * this.width;
             const y = Math.random() * this.height;
-            // Example of creating a unique hungerDisplayId for each player
             const parentDisplayId = 'players-display'; // The ID of the parent container for hunger displays
             const newPlayer = new Player(this, parentDisplayId, x, y);
             this.players.push(newPlayer);
@@ -142,19 +136,6 @@ class Game {
     removeFood(location) {
         this.food = this.food.filter(food => food.location.x !== location.x ||
             food.location.y !== location.y);
-    }
-    update() {
-        const now = Date.now();
-        this.food = this.food.filter(food => (now - food.creationTime) < this.foodLifespan);
-        this.players.forEach((player) => {
-            if (player.isAlive) {
-                player.update();
-            }
-            else {
-                this.removePlayer(player);
-            }
-        });
-        this.checkFood();
     }
     draw(context) {
         this.players.forEach((player) => {
@@ -173,6 +154,7 @@ class Game {
                 }
             }
         }
+        this.levelInstance.draw(context);
     }
     startFoodInterval() {
         this.foodIntervalId = setInterval(() => {
@@ -180,6 +162,20 @@ class Game {
                 return; // Check if game is active before adding food
             this.addFood(3);
         }, 5000);
+        // Start a new interval to gradually remove old food
+        const foodRemovalInterval = 1000; // Check every second for old food to remove
+        setInterval(() => {
+            if (!this.gameActive)
+                return;
+            this.removeExpiredFood();
+        }, foodRemovalInterval);
+    }
+    removeExpiredFood() {
+        const now = Date.now();
+        // Assuming your food array is sorted by creation time, check the first item
+        if (this.food.length > 0 && now - this.food[0].creationTime >= this.foodLifespan) {
+            this.food.shift(); // Remove the first (oldest) food item
+        }
     }
     handleMouseMove(event, canvas) {
         const rect = canvas.getBoundingClientRect(); // Gets the canvas position relative to the viewport
@@ -191,8 +187,8 @@ class Game {
         let hoveredPlayer = null;
         // Loop through all players to check if the mouse is over one
         for (let player of this.players) {
-            if (mouseX >= player.location.x && mouseX <= player.location.x + player.width &&
-                mouseY >= player.location.y && mouseY <= player.location.y + player.height) {
+            if (mouseX >= player.getPlayerLocation().x && mouseX <= player.getPlayerLocation().x + player.getPlayerSize().width &&
+                mouseY >= player.getPlayerLocation().y && mouseY <= player.getPlayerLocation().y + player.getPlayerSize().height) {
                 hoveredPlayer = player;
                 break; // Exit the loop once a hovered player is found
             }
@@ -215,11 +211,11 @@ class Game {
         // Assuming player.hunger has a property 'value' you want to display
         const timeAlive = player.getTimeAlive();
         infoDisplay.style.display = 'block';
-        infoDisplay.innerHTML = `Name: ${player.playerDisplayId}` +
-            `<br>Health: ${player.health}` +
-            `<br>Hunger: ${player.hunger.hungerLevel}` +
+        infoDisplay.innerHTML = `Name: ${player.getPlayerName()}` +
+            `<br>Health: ${Math.floor(player.health)}` +
+            `<br>Hunger: ${player.getPlayerHunger()}` +
             `<br>Can ID Poison: ${player.canIdentifyPoison}` +
-            `<br> Age: ${player.playerAge}` +
+            `<br> Age: ${player.getAge()}` +
             `<br> Time Alive: ${this.formatTime(timeAlive)}`;
     }
     formatTime(seconds) {

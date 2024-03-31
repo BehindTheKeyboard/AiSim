@@ -42,6 +42,27 @@ class InputHandler {
             this.game.handleMouseMove(event, this.canvas);
         });
     }
+
+    updatePlayerMovement(): void {
+        // Update player movement based on the keys pressed
+        for (const key of this.keys) {
+            switch (key) {
+                case 'ArrowUp':
+                    this.game.players.forEach(player => player.moveForward());
+                    break;
+                case 'ArrowDown':
+                    this.game.players.forEach(player => player.moveBackward);
+                    break;
+                case 'ArrowLeft':
+                    this.game.players.forEach(player => player.rotateLeft(1));
+                    break;
+                case 'ArrowRight':
+                    this.game.players.forEach(player => player.rotateRight(1));
+                    break;
+                // Add more cases for other keys as needed
+            }
+        }
+    }
 }
 
 export { InputHandler };
